@@ -109,7 +109,8 @@ The bot should recall details from earlier turns. For stronger verification, res
 
 ## Error handling
 
-- Missing API key returns HTTP 503 with setup guidance.
+- Missing or placeholder API key returns HTTP 503 with setup guidance.
+- Requests have a configurable timeout (`GEMINI_TIMEOUT_SECONDS`, default 30s) returning HTTP 504 on timeout.
 - Provider/network/quota failures return HTTP 502 with a user-readable message.
 - Failed API calls are not written to the conversation history.
 - Technical provider errors are logged by the backend, not exposed directly to the browser.

@@ -80,8 +80,11 @@
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message, conversation_id: conversationId })
       });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.detail || "Request failed.");
+      let data = {};
+      try {
+        data = await response.json();
+      } catch (_) {}
+      if (!response.ok) throw new Error(data.detail || `Request failed with status ${response.status}.`);
       conversationId = data.conversation_id;
       sessionStorage.setItem("devmate_conversation_id", conversationId);
       addMessage("model", data.reply);

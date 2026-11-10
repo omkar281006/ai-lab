@@ -17,6 +17,7 @@ load_dotenv(BASE_DIR / ".env")
 DB_PATH = BASE_DIR / "conversations.db"
 MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 MAX_HISTORY_MESSAGES = int(os.getenv("MAX_HISTORY_MESSAGES", "12"))
+GEMINI_TIMEOUT_SECONDS = float(os.getenv("GEMINI_TIMEOUT_SECONDS", "30.0"))
 
 SYSTEM_PROMPT = """
 You are DevMate, a practical coding mentor for students and early-career developers.
@@ -100,8 +101,8 @@ def health():
 
 @app.post("/api/chat", response_model=ChatResponse)
 def chat(request: ChatRequest):
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
+    api_key = (os.getenv("GEMINI_API_KEY") or "").strip()
+    if not api_key or api_key == "PASTE_YOUR_ROTATED_GEMINI_API_KEY_HERE":
         raise HTTPException(
             status_code=503,
             detail="Gemini API key is not configured. Add GEMINI_API_KEY to your .env file.",
@@ -127,7 +128,11 @@ def chat(request: ChatRequest):
     )
 
     try:
-        client = genai.Client(api_key=api_key)
+        timeout_ms = int(GEMINI_TIMEOUT_SECONDS * 1000)
+        client = genai.Client(
+            api_key=api_key,
+            http_options=types.HttpOptions(timeout=timeout_ms),
+        )
         response = client.models.generate_content(
             model=MODEL_NAME,
             contents=contents,
@@ -140,6 +145,14 @@ def chat(request: ChatRequest):
         if not reply:
             raise RuntimeError("The model returned an empty response.")
     except Exception as exc:
+        exc_str = str(exc).lower()
+        if "timeout" in exc_str or "timed out" in exc_str or "deadline" in exc_str:
+            print(f"Gemini request timed out: {type(exc).__name__}: {exc}")
+            raise HTTPException(
+                status_code=504,
+                detail="The request to Gemini timed out. Please try again.",
+            ) from exc
+
         # Log the technical detail on the server, but do not expose secrets
         # or raw provider errors to the browser.
         print(f"Gemini request failed: {type(exc).__name__}: {exc}")
