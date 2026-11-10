@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DevMate | LLM Chatbot</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, sans-serif; background: #f3f5f8; color: #172033; }
+    main { max-width: 850px; margin: 36px auto; padding: 0 16px; }
+    header { margin-bottom: 18px; }
+    h1 { margin: 0; font-size: 25px; }
+    .sub { color: #64748b; margin-top: 4px; }
+    #chat { background: white; border: 1px solid #dce2ea; border-radius: 14px; min-height: 55vh; padding: 18px; }
+    .msg { max-width: 85%; padding: 11px 14px; border-radius: 12px; margin: 10px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .user { background: #e8efff; margin-left: auto; }
+    .model { background: #f0f2f5; }
+    .label { display: block; font-size: 11px; color: #64748b; margin-bottom: 3px; text-transform: uppercase; letter-spacing: .04em; }
+    form { display: flex; gap: 10px; margin-top: 12px; }
+    textarea { flex: 1; min-height: 58px; resize: vertical; padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px; font: inherit; }
+    button { border: 0; border-radius: 10px; padding: 0 22px; background: #1d4ed8; color: white; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .55; cursor: wait; }
+    #status { min-height: 24px; color: #64748b; font-size: 13px; padding: 5px 2px; }
+    .actions { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+    .new { background: transparent; color: #1d4ed8; padding: 5px; }
+    @media(max-width:600px) { main { margin: 18px auto; } form { flex-direction:column; } button { min-height:46px; } .msg { max-width:95%; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>DevMate</h1>
+    <div class="sub">A coding mentor powered by Google Gemini. Conversation history is saved locally by the backend.</div>
+  </header>
+  <section id="chat" aria-live="polite">
+    <div class="msg model"><span class="label">DevMate</span>Hi! I'm DevMate. What are you building or learning today?</div>
+  </section>
+  <div id="status"></div>
+  <form id="form">
+    <textarea id="message" placeholder="Type your message... (Enter to send, Shift+Enter for a new line)" required maxlength="10000"></textarea>
+    <button id="send" type="submit">Send</button>
+  </form>
+  <div class="actions">
+    <small>Context window: last 12 messages</small>
+    <button class="new" id="newChat" type="button">Start new conversation</button>
+  </div>
+</main>
+<script>
+  const chat = document.querySelector("#chat");
+  const form = document.querySelector("#form");
+  const input = document.querySelector("#message");
+  const send = document.querySelector("#send");
+  const status = document.querySelector("#status");
+  let conversationId = sessionStorage.getItem("devmate_conversation_id");
+
+  function addMessage(role, text) {
+    const bubble = document.createElement("div");
+    bubble.className = `msg ${role}`;
+    const label = document.createElement("span");
+    label.className = "label";
+    label.textContent = role === "user" ? "You" : "DevMate";
+    const content = document.createElement("span");
+    content.textContent = text;
+    bubble.append(label, content);
+    chat.appendChild(bubble);
+    chat.scrollTop = chat.scrollHeight;
+  }
+
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const message = input.value.trim();
+    if (!message || send.disabled) return;
+    addMessage("user", message);
+    input.value = "";
+    send.disabled = true;
+    status.textContent = "DevMate is thinking...";
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message, conversation_id: conversationId })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Request failed.");
+      conversationId = data.conversation_id;
+      sessionStorage.setItem("devmate_conversation_id", conversationId);
+      addMessage("model", data.reply);
+      status.textContent = `Context messages sent: ${data.context_messages_sent}`;
+    } catch (error) {
+      addMessage("model", `Sorry, I couldn't reach the AI service. ${error.message}`);
+      status.textContent = "Request failed. Your message was not saved to the conversation.";
+    } finally {
+      send.disabled = false;
+      input.focus();
+    }
+  });
+
+  input.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+
+  document.querySelector("#newChat").addEventListener("click", () => {
+    conversationId = null;
+    sessionStorage.removeItem("devmate_conversation_id");
+    chat.replaceChildren();
+    addMessage("model", "New conversation started. What would you like to work on?");
+    status.textContent = "";
+    input.focus();
+  });
+</script>
+</body>
+</html>
